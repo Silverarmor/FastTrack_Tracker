@@ -41,6 +41,9 @@ PROJECTS = [
     "https://www.fasttrack.govt.nz/projects/alternative-to-the-brynderwyn-hills",
     "https://www.fasttrack.govt.nz/projects/university-of-auckland-student-centre-and-library",
     "https://www.fasttrack.govt.nz/projects/state-highway-1-whangarei-to-port-marsden-highway",
+    "https://www.fasttrack.govt.nz/projects/state-highway-1-wellington-improvements",
+    "https://www.fasttrack.govt.nz/projects/north-west-rapid-transit",
+    "https://www.fasttrack.govt.nz/projects/state-highway-1-north-canterbury-woodend-bypass-project-belfast-to-pegasus",
 ]
 
 FILE_EXTENSIONS = {
