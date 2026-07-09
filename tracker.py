@@ -1,4 +1,5 @@
 import hashlib
+import difflib
 import json
 import logging
 import os
@@ -31,6 +32,9 @@ DOMAIN = "https://www.fasttrack.govt.nz"
 DOMAIN_HOST = urlparse(DOMAIN).netloc.lower()
 SCHEMA_VERSION = 2
 DISCORD_LIMIT = 1900
+MAX_TEXT_DIFF_LINES = 24
+MAX_TEXT_DIFF_CHARS = 1200
+MAX_DIFF_LINE_CHARS = 220
 
 # Add or remove project URLs here as needed.
 PROJECTS = [
@@ -240,6 +244,50 @@ def page_changed(previous_page, current_page):
     return bool(previous_hash) and previous_hash != current_page["text_hash"]
 
 
+def split_text_for_diff(text):
+    parts = re.split(r"(?<=[.!?])\s+|(?<=:)\s+|(?<=;)\s+", text)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def truncate_diff_line(line):
+    if len(line) <= MAX_DIFF_LINE_CHARS:
+        return line
+    return f"{line[: MAX_DIFF_LINE_CHARS - 3]}..."
+
+
+def text_diff(previous_text, current_text):
+    previous_lines = split_text_for_diff(previous_text)
+    current_lines = split_text_for_diff(current_text)
+    diff_lines = list(
+        difflib.unified_diff(
+            previous_lines,
+            current_lines,
+            fromfile="previous",
+            tofile="current",
+            lineterm="",
+            n=2,
+        )
+    )
+    interesting_lines = [
+        truncate_diff_line(line)
+        for line in diff_lines
+        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+    ]
+
+    if not interesting_lines:
+        return ""
+
+    truncated = len(interesting_lines) > MAX_TEXT_DIFF_LINES
+    interesting_lines = interesting_lines[:MAX_TEXT_DIFF_LINES]
+    diff = "\n".join(interesting_lines)
+    if len(diff) > MAX_TEXT_DIFF_CHARS:
+        diff = f"{diff[: MAX_TEXT_DIFF_CHARS - 20].rstrip()}\n... diff truncated"
+    elif truncated:
+        diff = f"{diff}\n... diff truncated"
+
+    return f"```diff\n{diff}\n```"
+
+
 def describe_link(link):
     label = link["text"]
     if link["kind"] == "file":
@@ -272,7 +320,10 @@ def compare_project(project_url, previous_project, current_project):
 
         page_messages = []
         if page_changed(previous_page, current_page):
-            page_messages.append("- Page text changed")
+            page_messages.append("- Page text changed:")
+            diff = text_diff(previous_page.get("text", ""), current_page.get("text", ""))
+            if diff:
+                page_messages.append(diff)
 
         previous_links = previous_page.get("links", {})
         current_links = current_page.get("links", {})

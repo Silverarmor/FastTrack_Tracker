@@ -8,6 +8,9 @@ Checks selected NZ Fast-track approval project pages for:
 - changed link text
 - changed project or subpage text
 
+Page text changes include a compact diff showing removed lines with `-` and added
+lines with `+`.
+
 Updates are sent to Discord using a webhook. The tracker stores its previous run in
 `fasttrack_state.json` and writes runtime logs to `fasttrack_tracker.log`.
 
