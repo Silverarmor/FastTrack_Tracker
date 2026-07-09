@@ -1,5 +1,7 @@
 # tracker files
 fasttrack_*.json
+fasttrack_*.log
+cron.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
