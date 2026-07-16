@@ -10,6 +10,7 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
 from curl_cffi import requests
+from curl_cffi.requests.exceptions import RequestException
 from dotenv import load_dotenv
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -113,7 +114,7 @@ def send_discord_notification(content, is_error=False):
     for chunk in split_discord_message(content):
         try:
             requests.post(WEBHOOK_URL, json={"content": chunk}, timeout=10).raise_for_status()
-        except requests.RequestException as exc:
+        except RequestException as exc:
             logging.error("Failed to send Discord notification: %s", exc)
 
 
