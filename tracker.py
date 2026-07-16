@@ -121,18 +121,54 @@ def split_discord_message(content):
     lines = content.splitlines()
     chunks = []
     current = []
-    current_length = 0
+    in_code_block = False
+    code_block_language = ""
+
+    def chunk_length(chunk_lines):
+        return len("\n".join(chunk_lines))
+
+    def code_fence_language(line):
+        stripped = line.strip()
+        if not stripped.startswith("```"):
+            return None
+        return stripped[3:].strip()
+
+    def close_current_chunk():
+        nonlocal current
+        if in_code_block:
+            current.append("```")
+        chunks.append("\n".join(current))
+        current = []
+        if in_code_block:
+            opener = f"```{code_block_language}".rstrip()
+            current.append(opener)
 
     for line in lines:
-        line_length = len(line) + 1
-        if current and current_length + line_length > DISCORD_LIMIT:
-            chunks.append("\n".join(current))
-            current = []
-            current_length = 0
+        fence_language = code_fence_language(line)
+        will_be_in_code_block = in_code_block
+        if fence_language is not None:
+            will_be_in_code_block = not in_code_block
+
+        candidate = [*current, line]
+        if will_be_in_code_block:
+            candidate = [*candidate, "```"]
+
+        if current and chunk_length(candidate) > DISCORD_LIMIT:
+            close_current_chunk()
+
         current.append(line)
-        current_length += line_length
+
+        if fence_language is not None:
+            if in_code_block:
+                in_code_block = False
+                code_block_language = ""
+            else:
+                in_code_block = True
+                code_block_language = fence_language
 
     if current:
+        if in_code_block:
+            current.append("```")
         chunks.append("\n".join(current))
 
     return chunks or [content[:DISCORD_LIMIT]]
