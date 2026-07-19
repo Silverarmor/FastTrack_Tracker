@@ -45,6 +45,7 @@ PROJECTS = [
     "https://www.fasttrack.govt.nz/projects/state-highway-1-wellington-improvements",
     "https://www.fasttrack.govt.nz/projects/north-west-rapid-transit",
     "https://www.fasttrack.govt.nz/projects/state-highway-1-north-canterbury-woodend-bypass-project-belfast-to-pegasus",
+    "https://www.fasttrack.govt.nz/projects/eden-park-2.1",
 ]
 
 FILE_EXTENSIONS = {
