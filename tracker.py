@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
+from bs4.element import Comment, Doctype, NavigableString, ProcessingInstruction
 from curl_cffi import requests
 from curl_cffi.requests.exceptions import RequestException
 from dotenv import load_dotenv
@@ -31,7 +32,7 @@ load_dotenv(ENV_FILE)
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 DOMAIN = "https://www.fasttrack.govt.nz"
 DOMAIN_HOST = urlparse(DOMAIN).netloc.lower()
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DISCORD_LIMIT = 1900
 MAX_TEXT_DIFF_LINES = 24
 MAX_TEXT_DIFF_CHARS = 1200
@@ -201,11 +202,47 @@ def normalise_text(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
+BLOCK_TAGS = {
+    "address", "article", "aside", "blockquote", "br", "caption", "dd", "details",
+    "div", "dl", "dt", "fieldset", "figcaption", "figure", "h1", "h2", "h3", "h4",
+    "h5", "h6", "hr", "li", "main", "ol", "p", "pre", "section", "summary",
+    "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+}
+
+
+def extract_block_text(root):
+    """Return page text with one line per block-level element (li, p, heading, ...)."""
+    segments = []
+    buffer = []
+
+    def flush():
+        text = normalise_text(" ".join(buffer))
+        buffer.clear()
+        if text:
+            segments.append(text)
+
+    def walk(node):
+        for child in node.children:
+            if isinstance(child, (Comment, Doctype, ProcessingInstruction)):
+                continue
+            if isinstance(child, NavigableString):
+                buffer.append(str(child))
+            elif child.name in BLOCK_TAGS:
+                flush()
+                walk(child)
+                flush()
+            else:
+                walk(child)
+
+    walk(root)
+    flush()
+    return "\n".join(segments)
+
+
 def extract_page_text(soup):
     root = content_root(soup)
     title = normalise_text((root.find(["h1", "title"]) or soup.find("title") or root).get_text(" ", strip=True))
-    text = normalise_text(root.get_text(" ", strip=True))
-    return title, text
+    return title, extract_block_text(root)
 
 
 def extract_links(soup, page_url):
@@ -286,8 +323,7 @@ def page_changed(previous_page, current_page):
 
 
 def split_text_for_diff(text):
-    parts = re.split(r"(?<=[.!?])\s+|(?<=:)\s+|(?<=;)\s+", text)
-    return [part.strip() for part in parts if part.strip()]
+    return [line for line in text.split("\n") if line]
 
 
 def truncate_diff_line(line):
