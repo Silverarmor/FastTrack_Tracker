@@ -3,6 +3,9 @@ fasttrack_*.json
 fasttrack_*.log
 cron.log
 
+# backup folders
+backup*/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
