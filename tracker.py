@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 import traceback
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -37,6 +38,11 @@ DISCORD_LIMIT = 1900
 MAX_TEXT_DIFF_LINES = 24
 MAX_TEXT_DIFF_CHARS = 1200
 MAX_DIFF_LINE_CHARS = 220
+FETCH_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 20
+REQUEST_DELAY_SECONDS = 1
+# Cloudflare occasionally rejects a request outright; these are worth retrying.
+TRANSIENT_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504}
 
 # Add or remove project URLs here as needed.
 PROJECTS = [
@@ -178,9 +184,21 @@ def split_discord_message(content):
 
 
 def fetch_soup(url):
-    response = requests.get(url, impersonate="chrome", timeout=30)
-    response.raise_for_status()
-    return BeautifulSoup(response.text, "html.parser")
+    for attempt in range(1, FETCH_ATTEMPTS + 1):
+        time.sleep(REQUEST_DELAY_SECONDS)
+        response = requests.get(url, impersonate="chrome", timeout=30)
+        if response.status_code in TRANSIENT_STATUS_CODES and attempt < FETCH_ATTEMPTS:
+            delay = RETRY_DELAY_SECONDS * attempt
+            message = (
+                f"HTTP {response.status_code} for <{url}> "
+                f"(attempt {attempt}/{FETCH_ATTEMPTS}); retrying in {delay}s."
+            )
+            logging.warning(message)
+            send_discord_notification(f"**TRACKER WARNING**\n{message}")
+            time.sleep(delay)
+            continue
+        response.raise_for_status()
+        return BeautifulSoup(response.text, "html.parser")
 
 
 def content_root(soup):
