@@ -48,6 +48,10 @@ TRANSIENT_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504}
 # one combined message at the end instead of a notification per incident.
 RUN_ISSUES = []
 
+# URLs that fetched successfully after transient failures, mapped to the number
+# of failed attempts. Only mentioned when the project also has changes to report.
+RECOVERED_FETCHES = {}
+
 
 class FetchError(RequestException):
     """A page fetch failed with an HTTP error; the message is already concise."""
@@ -206,7 +210,7 @@ def fetch_soup(url):
         if response.status_code >= 400:
             raise FetchError(f"HTTP {response.status_code} for <{url}> after {attempt} attempt(s)")
         if attempt > 1:
-            RUN_ISSUES.append(f"Recovered <{url}> on attempt {attempt}/{FETCH_ATTEMPTS}.")
+            RECOVERED_FETCHES[url] = attempt - 1
         return BeautifulSoup(response.text, "html.parser")
 
 
@@ -481,6 +485,11 @@ def process_project(project_url, previous_project):
         current_project["pages"][page_url] = scrape_page(page_url)
 
     messages = compare_project(normalised_project_url, previous_project, current_project)
+    if messages:
+        for page_url in pages_to_check:
+            failures = RECOVERED_FETCHES.get(page_url)
+            if failures:
+                messages.append(f"Note: <{page_url}> failed {failures} fetch attempt(s) before succeeding.")
     return current_project, messages
 
 
