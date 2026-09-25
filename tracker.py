@@ -44,6 +44,14 @@ REQUEST_DELAY_SECONDS = 5
 # Cloudflare occasionally rejects a request outright; these are worth retrying.
 TRANSIENT_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504}
 
+# Warnings and per-project failures collected during a run, sent to Discord in
+# one combined message at the end instead of a notification per incident.
+RUN_ISSUES = []
+
+
+class FetchError(RequestException):
+    """A page fetch failed with an HTTP error; the message is already concise."""
+
 # Add or remove project URLs here as needed.
 PROJECTS = [
     "https://www.fasttrack.govt.nz/projects/alternative-to-the-brynderwyn-hills",
@@ -189,15 +197,16 @@ def fetch_soup(url):
         response = requests.get(url, impersonate="chrome", timeout=30)
         if response.status_code in TRANSIENT_STATUS_CODES and attempt < FETCH_ATTEMPTS:
             delay = RETRY_DELAY_SECONDS * attempt
-            message = (
-                f"HTTP {response.status_code} for <{url}> "
-                f"(attempt {attempt}/{FETCH_ATTEMPTS}); retrying in {delay}s."
+            logging.warning(
+                "HTTP %s for %s (attempt %s/%s); retrying in %ss.",
+                response.status_code, url, attempt, FETCH_ATTEMPTS, delay,
             )
-            logging.warning(message)
-            send_discord_notification(f"**TRACKER WARNING**\n{message}")
             time.sleep(delay)
             continue
-        response.raise_for_status()
+        if response.status_code >= 400:
+            raise FetchError(f"HTTP {response.status_code} for <{url}> after {attempt} attempt(s)")
+        if attempt > 1:
+            RUN_ISSUES.append(f"Recovered <{url}> on attempt {attempt}/{FETCH_ATTEMPTS}.")
         return BeautifulSoup(response.text, "html.parser")
 
 
@@ -512,10 +521,14 @@ def main():
                         "",
                     ]
                 )
+        except FetchError as exc:
+            logging.error("Failed checking %s: %s", project_slug, exc)
+            RUN_ISSUES.append(f"Failed checking {project_slug}: {exc}.")
+            current_state["projects"][project_slug] = previous_state.get("projects", {}).get(project_slug, {})
         except Exception:
             error_details = traceback.format_exc()
             logging.error("Failed checking %s:\n%s", project_slug, error_details)
-            send_discord_notification(f"Failed checking {project_slug}:\n{error_details}", is_error=True)
+            RUN_ISSUES.append(f"Failed checking {project_slug}:\n```text\n{error_details[:1500]}\n```")
             current_state["projects"][project_slug] = previous_state.get("projects", {}).get(project_slug, {})
 
     if all_update_messages:
@@ -524,6 +537,9 @@ def main():
         send_discord_notification(final_message)
     else:
         logging.info("No updates found across tracked projects.")
+
+    if RUN_ISSUES:
+        send_discord_notification("\n".join(["**TRACKER ISSUES**", *(f"- {issue}" for issue in RUN_ISSUES)]))
 
     save_state(current_state)
     logging.info("State saved to %s", STATE_FILE)
